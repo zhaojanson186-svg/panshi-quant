@@ -7,32 +7,39 @@ import os
 from datetime import datetime
 
 # ==========================================
-# 1. 邮箱基础配置 (复用你之前存好的 Secrets)
+# 1. 邮箱基础配置
 # ==========================================
 SENDER_EMAIL = os.environ.get('SENDER_EMAIL')      
 SENDER_PWD = os.environ.get('SENDER_PASSWORD')     
 RECEIVER_EMAIL = os.environ.get('RECEIVER_EMAIL')  
-SMTP_SERVER = "smtp.qq.com"  # 如果是网易请改为 smtp.163.com
+SMTP_SERVER = "smtp.qq.com"  
 SMTP_PORT = 465              
 
 # ==========================================
-# 2. 核心靶点配置
+# 2. 混合型检索策略 (核心靶点 + 顶级期刊行业动态)
 # ==========================================
-TARGETS = ["ENPP3", "CD3"]
-DAYS_BACK = 2  # 检索过去 48 小时内新收录的文献 (留出余量，防止错过)
+SEARCH_QUERIES = {
+    # 专属靶点区 (适度放宽，不错过任何线索)
+    "专属靶点_ENPP3": '("ENPP3"[tiab] OR "CD203c"[tiab])', # 加入了ENPP3的常用别名
+    "专属靶点_CD3_双抗": '("CD3"[tiab]) AND ("Bispecific"[tiab] OR "T-cell engager"[tiab] OR "TCE"[tiab])',
+    
+    # 行业前沿区 (只看顶级期刊，大浪淘沙)
+    "行业动态_CNS顶级突破": '("Nature"[Journal] OR "Science"[Journal] OR "Cell"[Journal] OR "Nature medicine"[Journal] OR "Nature biotechnology"[Journal]) AND ("Antibody"[tiab] OR "Bispecific"[tiab] OR "ADC"[tiab] OR "Autoimmune"[tiab])'
+}
+
+DAYS_BACK = 3  # 检索过去 72 小时
 
 # ==========================================
 # 3. NCBI PubMed API 检索引擎
 # ==========================================
-def fetch_pubmed(target, days):
-    # 第一步：搜索文献 ID (PMID)
+def fetch_pubmed(strategy_name, query_string, days):
     search_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
     search_params = {
         "db": "pubmed",
-        "term": f'"{target}"[Title/Abstract]', # 精准匹配标题或摘要中包含靶点的文献
+        "term": query_string,  
         "retmode": "json",
         "reldate": days,
-        "datetype": "edat", # 按文献录入数据库的时间筛选，最适合做每日追踪
+        "datetype": "edat", 
         "tool": "github_actions_radar",
         "email": RECEIVER_EMAIL
     }
@@ -44,7 +51,6 @@ def fetch_pubmed(target, days):
         if not id_list:
             return []
             
-        # 第二步：根据 PMID 获取文献详细信息 (标题、期刊、日期)
         summary_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
         summary_params = {
             "db": "pubmed",
@@ -64,7 +70,7 @@ def fetch_pubmed(target, days):
             
         return articles
     except Exception as e:
-        print(f"抓取 {target} 失败: {e}")
+        print(f"执行策略 [{strategy_name}] 时失败: {e}")
         return []
 
 # ==========================================
@@ -75,22 +81,21 @@ def main():
     all_messages = []
     total_articles = 0
     
-    for target in TARGETS:
-        print(f"正在检索靶点: {target} ...")
-        articles = fetch_pubmed(target, DAYS_BACK)
+    for strategy_name, query_string in SEARCH_QUERIES.items():
+        print(f"正在执行检索策略: {strategy_name} ...")
+        articles = fetch_pubmed(strategy_name, query_string, DAYS_BACK)
         if articles:
             total_articles += len(articles)
-            all_messages.append(f"🧬 【{target}】 发现 {len(articles)} 篇最新文献：\n\n" + "\n\n".join(articles))
+            all_messages.append(f"🧬 【{strategy_name}】 截获 {len(articles)} 篇文献：\n\n" + "\n\n".join(articles))
             
-    # 根据结果切换平安信或警报信
     if total_articles == 0:
-        subject = f"✅ 【科研平安信】PubMed 雷达今日巡视正常 ({date_str})"
-        content = f"长官，您好：\n\n今日 ({date_str}) PubMed 数据库检索完毕。\n\n您关注的核心靶点 ENPP3 和 CD3 在过去 48 小时内暂无新文献收录。请安心推进实验。\n\n--------------------\n此邮件由 AI 科研情报官 自动发出。"
+        subject = f"✅ 【科研平安信】PubMed 狙击雷达今日无新文献 ({date_str})"
+        content = f"长官，您好：\n\n今日 ({date_str}) PubMed 数据库检索完毕。\n\n您的专属靶点及 CNS 顶级期刊在过去 72 小时内暂无抗体/自免相关的新文献收录。\n\n--------------------\n此邮件由 AI 科研情报官 自动发出。"
     else:
-        subject = f"🚨 【文献速递】PubMed 发现 {total_articles} 篇核心靶点新进展 ({date_str})"
-        content = f"长官，您好：\n\n今日 ({date_str}) PubMed 雷达检索到最新文献，请查阅：\n\n"
+        subject = f"🚨 【文献速递】截获 {total_articles} 篇靶点与行业前沿文献 ({date_str})"
+        content = f"长官，您好：\n\n今日 ({date_str}) PubMed 雷达扫描完毕。以下是您的核心靶点进展与全球顶级期刊的最新抗体研发动态：\n\n"
         content += "\n====================\n\n".join(all_messages)
-        content += "\n\n--------------------\n此邮件由 AI 科研情报官 自动发出，助力您的抗体研发工作。"
+        content += "\n\n--------------------\n保持广阔视野，方能精准狙击。此邮件由 AI 科研情报官 自动发出。"
         
     msg = MIMEText(content, 'plain', 'utf-8')
     msg['From'] = formataddr((str(Header("AI 科研情报官", 'utf-8')), SENDER_EMAIL))
