@@ -4,7 +4,7 @@ import ta
 import smtplib
 from email.mime.text import MIMEText
 from email.header import Header
-from email.utils import formataddr  # 新增：用于生成符合 RFC 协议的合法发件人格式
+from email.utils import formataddr  
 import os
 from datetime import datetime
 
@@ -30,7 +30,7 @@ panshi_pool = {
 }
 
 # ==========================================
-# 3. 核心计算引擎
+# 3. V15 核心计算引擎 (周线+日线多维共振)
 # ==========================================
 def check_signals():
     alert_messages = []
@@ -41,26 +41,47 @@ def check_signals():
             continue 
             
         try:
-            df = yf.Ticker(info['code']).history(period="6mo")
+            # 抓取过去2年的数据，确保周线计算有足够的 K 线积淀
+            df = yf.Ticker(info['code']).history(period="2y")
             if df.empty: continue
             
+            # --- 步骤 A: 计算日线级别指标 ---
             close_s = df['Close'].squeeze()
             df['SMA_20'] = ta.trend.sma_indicator(close_s, window=20)
             df['SMA_60'] = ta.trend.sma_indicator(close_s, window=60)
             df['MACD'] = ta.trend.macd(close_s)
             df['MACD_Signal'] = ta.trend.macd_signal(close_s)
             
-            latest = df.iloc[-1] 
+            # --- 步骤 B: 降维打击，合成周线级别数据 ---
+            # 按周五重采样，合成真实的周K线
+            df_weekly = df.resample('W-FRI').agg({'Close': 'last'})
+            df_weekly['W_MACD'] = ta.trend.macd(df_weekly['Close'])
+            df_weekly['W_MACD_Signal'] = ta.trend.macd_signal(df_weekly['Close'])
+            # 判断周线趋势：周线MACD大于信号线，视为大级别多头
+            df_weekly['W_Trend_Up'] = df_weekly['W_MACD'] > df_weekly['W_MACD_Signal']
+            
+            # --- 步骤 C: 提取最新一天的状态 ---
+            latest_daily = df.iloc[-1] 
             date_str = df.index[-1].strftime("%Y-%m-%d")
-            close_price = latest['Close']
+            close_price = latest_daily['Close']
+            
+            # 提取大级别（周线）的宏观态度
+            latest_weekly_trend = df_weekly.iloc[-1]['W_Trend_Up']
             
             signal = "⚪ 观望持有"
-            if close_price > latest['SMA_60'] and close_price > latest['SMA_20'] and latest['MACD'] > latest['MACD_Signal']:
-                signal = "🟢 触发【买入/加仓】信号 (突破60日线且动能向上)"
-            elif close_price < latest['SMA_20']:
-                signal = "🔴 触发【卖出/止损】信号 (跌破20日防守线)"
+            
+            # --- 步骤 D: 共振过滤与审判 ---
+            if close_price > latest_daily['SMA_60'] and close_price > latest_daily['SMA_20'] and latest_daily['MACD'] > latest_daily['MACD_Signal']:
+                if latest_weekly_trend:
+                    signal = "🟢 触发【右侧买入】信号 (日线突破且周线MACD共振向上，大趋势确认)"
+                else:
+                    signal = "⚠️ 触发屏蔽机制 (日线虽突破，但周线处于空头趋势，防范假突破噪音，建议放弃交易)"
+                    
+            elif close_price < latest_daily['SMA_20']:
+                # 卖出不需要周线共振：防守防线破裂，直接跑
+                signal = "🔴 触发【卖出/止损】信号 (跌破日线20日防守，无条件避险出局)"
                 
-            if "🟢" in signal or "🔴" in signal:
+            if "🟢" in signal or "🔴" in signal or "⚠️" in signal:
                 msg = f"【{name}】 最新收盘价: {close_price:.2f}\n   指令: {signal}"
                 alert_messages.append(msg)
                 
@@ -70,22 +91,20 @@ def check_signals():
     return alert_messages, date_str
 
 # ==========================================
-# 4. 发送邮件引擎 (修复 550 报错版)
+# 4. 发送邮件引擎 
 # ==========================================
 def send_email(messages, date_str):
     if not messages:
-        subject = f"✅ 【平安信】盘石计划今日巡视正常 ({date_str})"
-        mail_content = f"盘石计划长官，您好：\n\n今日 ({date_str}) 交易系统后台巡逻完毕。\n\n目前大盘风平浪静，您的进攻型标的均未触发极值交易信号。请安心工作，继续【观望持有】。\n\n--------------------\n此邮件由 V14 盘石计划·烽火台系统 自动发出。"
+        subject = f"✅ 【平安信】V15 盘石计划今日巡视正常 ({date_str})"
+        mail_content = f"盘石计划长官，您好：\n\n今日 ({date_str}) 交易系统后台巡逻完毕。\n\n目前大盘风平浪静，没有标的触发多级别共振。请安心工作，继续【观望持有】。\n\n--------------------\n此邮件由 V15 盘石计划·多维共振系统 自动发出。"
     else:
-        subject = f"🚨 【操作提示】盘石计划今日交易信号 ({date_str})"
-        mail_content = f"盘石计划长官，您好：\n\n今日 ({date_str}) 交易系统后台巡逻完毕，发现以下标的触发极值信号，请查阅：\n\n"
+        subject = f"🚨 【操作提示】V15 盘石计划·共振信号 ({date_str})"
+        mail_content = f"盘石计划长官，您好：\n\n今日 ({date_str}) 交易系统后台巡逻完毕，V15双核引擎捕捉到以下极值信号：\n\n"
         mail_content += "\n\n".join(messages)
-        mail_content += "\n\n--------------------\n此邮件由 V14 盘石计划·烽火台系统 自动发出，请结合宏观面判断是否执行。"
+        mail_content += "\n\n--------------------\n大级别定生死，小级别找买点。此邮件由 V15 盘石计划自动发出，请严格执行系统纪律。"
     
     msg = MIMEText(mail_content, 'plain', 'utf-8')
-    
-    # 核心修复：用 formataddr 将名称和真实邮箱地址绑定，例如 "V14 盘石量化系统 <xxx@qq.com>"
-    msg['From'] = formataddr((str(Header("V14 盘石量化系统", 'utf-8')), SENDER_EMAIL))
+    msg['From'] = formataddr((str(Header("V15 盘石量化系统", 'utf-8')), SENDER_EMAIL))
     msg['To'] = formataddr((str(Header("基金经理", 'utf-8')), RECEIVER_EMAIL))
     msg['Subject'] = Header(subject, 'utf-8')
     
