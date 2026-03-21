@@ -4,6 +4,7 @@ import ta
 import smtplib
 from email.mime.text import MIMEText
 from email.header import Header
+from email.utils import formataddr  # 新增：用于生成符合 RFC 协议的合法发件人格式
 import os
 from datetime import datetime
 
@@ -33,7 +34,7 @@ panshi_pool = {
 # ==========================================
 def check_signals():
     alert_messages = []
-    date_str = datetime.now().strftime("%Y-%m-%d") # 默认取今天日期
+    date_str = datetime.now().strftime("%Y-%m-%d") 
     
     for name, info in panshi_pool.items():
         if info['strategy'] == "死拿":
@@ -50,7 +51,6 @@ def check_signals():
             df['MACD_Signal'] = ta.trend.macd_signal(close_s)
             
             latest = df.iloc[-1] 
-            # 动态获取数据最后一天日期（防止周末测试时日期对不上）
             date_str = df.index[-1].strftime("%Y-%m-%d")
             close_price = latest['Close']
             
@@ -70,10 +70,9 @@ def check_signals():
     return alert_messages, date_str
 
 # ==========================================
-# 4. 发送邮件引擎 (新增心跳平安信逻辑)
+# 4. 发送邮件引擎 (修复 550 报错版)
 # ==========================================
 def send_email(messages, date_str):
-    # 根据是否有信号，自动切换邮件的主题和正文
     if not messages:
         subject = f"✅ 【平安信】盘石计划今日巡视正常 ({date_str})"
         mail_content = f"盘石计划长官，您好：\n\n今日 ({date_str}) 交易系统后台巡逻完毕。\n\n目前大盘风平浪静，您的进攻型标的均未触发极值交易信号。请安心工作，继续【观望持有】。\n\n--------------------\n此邮件由 V14 盘石计划·烽火台系统 自动发出。"
@@ -84,8 +83,10 @@ def send_email(messages, date_str):
         mail_content += "\n\n--------------------\n此邮件由 V14 盘石计划·烽火台系统 自动发出，请结合宏观面判断是否执行。"
     
     msg = MIMEText(mail_content, 'plain', 'utf-8')
-    msg['From'] = Header("V14 盘石量化系统", 'utf-8')
-    msg['To'] = Header("基金经理", 'utf-8')
+    
+    # 核心修复：用 formataddr 将名称和真实邮箱地址绑定，例如 "V14 盘石量化系统 <xxx@qq.com>"
+    msg['From'] = formataddr((str(Header("V14 盘石量化系统", 'utf-8')), SENDER_EMAIL))
+    msg['To'] = formataddr((str(Header("基金经理", 'utf-8')), RECEIVER_EMAIL))
     msg['Subject'] = Header(subject, 'utf-8')
     
     try:
