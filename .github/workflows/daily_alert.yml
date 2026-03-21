@@ -1,0 +1,37 @@
+name: Panshi Daily Alert
+
+# 触发条件：定时触发
+on:
+  schedule:
+    # 每天 UTC 时间 8:30 执行 (相当于北京时间下午 16:30，港股和A股均已收盘)
+    # 注意：cron 的时间是 UTC 时间！星期1到星期5执行。
+    - cron: '30 8 * * 1-5'
+  
+  # 允许你手动点击按钮测试运行
+  workflow_dispatch:
+
+jobs:
+  run-alert:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install yfinance pandas ta
+        
+    - name: Run Alert Engine
+      env:
+        SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+        SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
+        RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
+      run: |
+        python alert_engine.py
