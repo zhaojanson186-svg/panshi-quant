@@ -3,10 +3,9 @@ name: Panshi Daily Alert
 # 触发条件：定时触发
 on:
   schedule:
-    # 每天 UTC 时间 8:30 执行 (相当于北京时间下午 16:30，港股和A股均已收盘)
-    # 注意：cron 的时间是 UTC 时间！星期1到星期5执行。
-    - cron: '30 8 * * 1-5'
-  
+    # UTC 时间 4:00 执行 = 北京时间中午 12:00
+    - cron: '0 4 * * *'
+
   # 允许你手动点击按钮测试运行
   workflow_dispatch:
 
