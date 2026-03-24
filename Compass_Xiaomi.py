@@ -31,6 +31,7 @@ ticker_dict = {
     "比亚迪(能源替代)": "002594",
     "中远海能(混乱溢价)": "600026",
     "紫金矿业(硬资产金)": "601899",
+    "翰森制药(ADC出海)": "03692",
     "自定义输入...": "custom"
 }
 selected_name = st.sidebar.selectbox("选择分析标的", list(ticker_dict.keys()))
