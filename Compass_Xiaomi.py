@@ -131,25 +131,54 @@ def load_fundamentals(t):
         return {}
 
 def run_strategy_sim(df, style, initial_cap=100000):
-    cash, pos = initial_cap, 0
-    equity = []
-    for _, row in df.iterrows():
-        price = row['Close']
-        buy, sell = False, False
-        if style == "左侧" and row['Left_Sig'] == "买": buy = True
-        if style == "左侧" and row['Left_Sig'] == "卖": sell = True
-        if style == "右侧" and row['Right_Sig'] == "买": buy = True
-        if style == "右侧" and row['Right_Sig'] == "卖": sell = True
-        if style == "死拿": buy = True 
-            
-        if buy and pos == 0:
-            pos = cash // price
-            cash -= pos * price
-        elif sell and pos > 0 and style != "死拿":
-            cash += pos * price
-            pos = 0
-        equity.append(cash + pos * price)
-    return equity
+    """
+    V16 机构级向量化回测引擎
+    包含了严格的未来函数防范 (shift) 和真实市场摩擦损耗计算。
+    """
+    # ==========================================
+    # 设定真实市场的“毒性”参数 (交易摩擦损耗)
+    # ==========================================
+    COMMISSION = 0.0003  # 券商佣金 (万分之三)
+    STAMP_DUTY = 0.001   # 印花税 (千分之一，仅卖出时收取)
+    SLIPPAGE = 0.002     # 恶劣滑点假设 (千分之二，买卖都要扣除，模拟大资金进出的冲击成本)
+
+    # 1. 计算标的资产每日的“基准涨跌幅”
+    daily_ret = df['Close'].pct_change().fillna(0)
+
+    # 2. 向量化解析目标仓位 (0 为空仓，1 为满仓)
+    pos = pd.Series(np.nan, index=df.index)
+    if style == "死拿":
+        pos = pos.fillna(1)
+    else:
+        sig_col = 'Left_Sig' if style == "左侧" else 'Right_Sig'
+        pos.loc[df[sig_col] == '买'] = 1
+        pos.loc[df[sig_col] == '卖'] = 0
+        # 如果当天没有买卖信号，就维持前一天的仓位状态 (向前填充)
+        pos = pos.ffill().fillna(0)
+
+    # 3. 极度关键：防止“未来函数” (时间机器作弊)
+    # 你的信号是今天收盘产生的，你只能在【明天】享受涨跌。所以仓位必须往后平移一天！
+    actual_pos = pos.shift(1).fillna(0)
+
+    # 4. 计算无摩擦的理论收益
+    strategy_ret = actual_pos * daily_ret
+
+    # 5. 捕捉交易动作，计算高昂的摩擦成本
+    # 仓位差值: 1 表示今天执行了买入，-1 表示今天执行了卖出，0 表示没动
+    trade_action = actual_pos.diff().fillna(0)
+    
+    # 只要发生买入，扣除佣金和滑点
+    buy_costs = (trade_action == 1) * (COMMISSION + SLIPPAGE)
+    # 只要发生卖出，扣除印花税、佣金和滑点
+    sell_costs = (trade_action == -1) * (STAMP_DUTY + COMMISSION + SLIPPAGE)
+
+    # 6. 扣除“毒性”后的真实净收益
+    real_strategy_ret = strategy_ret - buy_costs - sell_costs
+
+    # 7. 向量化计算资金复利曲线
+    equity = initial_cap * (1 + real_strategy_ret).cumprod()
+
+    return equity.tolist()
 
 # ==========================================
 # 单股分析主干逻辑 
