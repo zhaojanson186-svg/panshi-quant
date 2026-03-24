@@ -254,7 +254,29 @@ if getattr(st.session_state, 'run_analysis', False):
             st.plotly_chart(fig_k, use_container_width=True)
 
         with tab3:
-            st.markdown("基本面数据模块运行正常。")
+            st.subheader(f"🕸️ {stock_name} ({ticker}) - 基本面估值雷达")
+            st.markdown("---")
+            
+            # 提取我们在 load_fundamentals 函数里抓取到的数据
+            pe_ratio = info.get('动态市盈率', '暂无数据')
+            market_cap = info.get('总市值', 0)
+            
+            # 将市值格式化为“亿”为单位，方便阅读
+            if isinstance(market_cap, (int, float)) and market_cap > 0:
+                market_cap_str = f"{market_cap / 100000000:.2f} 亿"
+            else:
+                market_cap_str = "暂无数据"
+
+            # 使用三个列来漂亮地展示基本面
+            col_f1, col_f2, col_f3 = st.columns(3)
+            with col_f1:
+                st.metric(label="🏢 公司名称", value=stock_name)
+            with col_f2:
+                st.metric(label="💰 总市值", value=market_cap_str)
+            with col_f3:
+                st.metric(label="⚖️ 动态市盈率 (PE)", value=pe_ratio)
+                
+            st.info("💡 提示：盘石量化系统侧重于量价突破，基本面数据主要用于【防雷】。当动态市盈率出现极端异常（如负数或数百倍）且处于下行通道时，即使触发右侧买入也需谨慎控制仓位。")
     else:
         st.error("无法获取数据，请检查股票代码。")
 else:
