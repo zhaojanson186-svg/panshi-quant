@@ -9,8 +9,21 @@ import yfinance as yf
 from datetime import datetime
 
 # --- 页面配置 ---
-st.set_page_config(page_title="多维量化投资罗盘 V15 共振版", layout="wide", page_icon="🧭")
-st.title("🧭 核心资产多维量化系统 (V15 盘石计划·双核共振版)")
+st.set_page_config(page_title="盘石量化系统 V16 机构版", layout="wide", page_icon="🧭")
+st.title("🧭 核心资产多维量化系统 (V16 盘石计划·机构终极版)")
+
+# ==========================================
+# 核心工具箱 (必须放在最前面，让后面的雷达能用到)
+# ==========================================
+def get_yf_ticker(code):
+    if '.' in code: return code
+    if code.startswith('6'): return f"{code}.SS"
+    elif code.startswith('0') or code.startswith('3'):
+        if len(code) == 6: return f"{code}.SZ"
+    elif len(code) <= 5: 
+        return f"{int(code):04d}.HK"
+    return code
+
 ticker_dict = {
     "中国银行(金融护卫)": "601988",
     "中国海油(能源上游)": "600938",
@@ -21,8 +34,9 @@ ticker_dict = {
     "翰森制药(ADC出海)": "3692.HK",
     "自定义输入...": "custom"
 }
+
 # ==========================================
-# 🛰️ 顶层仪表盘：全局护卫舰长雷达 (午休盯盘专用)
+# 🛰️ 顶层仪表盘：全局护卫舰长雷达
 # ==========================================
 st.markdown("---")
 st.subheader("🛰️ 全局护卫舰长雷达 (午休 10 秒盯盘专用)")
@@ -36,14 +50,12 @@ if st.button("🚀 启动一键全军巡检", type="primary", use_container_widt
             tk = ticker_dict[name]
             yf_tk = get_yf_ticker(tk)
             try:
-                # 获取最近1年数据以确保周线MACD计算准确
                 df_scan = yf.Ticker(yf_tk).history(period="1y")
                 if df_scan.empty: continue
                 
                 close_s = df_scan['Close'].squeeze()
                 curr_price = close_s.iloc[-1]
                 
-                # 极速计算核心指标
                 sma_20 = ta.trend.sma_indicator(close_s, window=20).iloc[-1]
                 sma_60 = ta.trend.sma_indicator(close_s, window=60).iloc[-1]
                 macd = ta.trend.macd(close_s).iloc[-1]
@@ -54,8 +66,7 @@ if st.button("🚀 启动一键全军巡检", type="primary", use_container_widt
                 
                 w_trend_up = w_macd > w_macd_sig
                 
-                # 战术指令判定
-                sig = "⚪ 观望 / 持有"
+                sig = "⚪ 观望 / 持现"
                 if curr_price > sma_60 and curr_price > sma_20 and macd > macd_sig:
                     sig = "🟢 触发右侧买入" if w_trend_up else "⚠️ 假突破屏蔽"
                 elif curr_price < sma_20:
@@ -75,15 +86,17 @@ if st.button("🚀 启动一键全军巡检", type="primary", use_container_widt
                 
         if results:
             res_df = pd.DataFrame(results)
-            # 渲染精美的数据表格
             st.dataframe(res_df, use_container_width=True, hide_index=True)
             st.success("✅ 巡检完成！长官，请重点关注标有 🟢 或 🔴 的资产，其余可安心略过。")
 st.markdown("---")
 
+# ==========================================
+# 页面主体 Tabs
+# ==========================================
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🏆 AI 智能多维回测", 
     "📉 K线信号复盘", 
-    "🕸️ 基本面估值雷达", 
+    "🕸️ 首席分析师全景扫描", 
     "🔥 组合相关性热力图",
     "🛡️ 组合压力测试 (盘石计划)"
 ])
@@ -92,7 +105,6 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 # 侧边栏：全局单股参数设置
 # ==========================================
 st.sidebar.header("⚙️ 全局单股分析设置")
-
 selected_name = st.sidebar.selectbox("选择分析标的", list(ticker_dict.keys()))
 if selected_name == "自定义输入...":
     ticker = st.sidebar.text_input("请输入股票代码 (如 601988)", "601988")
@@ -100,23 +112,14 @@ else:
     ticker = ticker_dict[selected_name]
 
 period = st.sidebar.selectbox("选择历史回测深度", ["1年", "2年", "3年", "5年"], index=3)
-
 st.sidebar.markdown("---")
-st.sidebar.info("💡 提示：V15已开启周线+日线多级别共振引擎。")
+st.sidebar.info("💡 提示：V16已开启【周线级别共振过滤】及【真实交易滑点与手续费扣除】。")
 if st.sidebar.button("🚀 启动单股 AI 智能回测", type="primary", use_container_width=True):
     st.session_state.run_analysis = True
 
 # ==========================================
 # 核心引擎：数据抓取与 V15 共振计算
 # ==========================================
-def get_yf_ticker(code):
-    if code.startswith('6'): return f"{code}.SS"
-    elif code.startswith('0') or code.startswith('3'):
-        if len(code) == 6: return f"{code}.SZ"
-    elif len(code) <= 5: 
-        return f"{int(code):04d}.HK"
-    return code
-
 @st.cache_data(ttl=3600) 
 def load_and_calc_data(t, p):
     try:
@@ -139,12 +142,10 @@ def load_and_calc_data(t, p):
         df['BB_High'] = ta.volatility.bollinger_hband(close_s, window=20, window_dev=2)
         df['BB_Low'] = ta.volatility.bollinger_lband(close_s, window=20, window_dev=2)
         
-        # 日线 MACD
         df['MACD'] = ta.trend.macd(close_s)
         df['MACD_Signal'] = ta.trend.macd_signal(close_s)
         df['MACD_Hist'] = ta.trend.macd_diff(close_s)
         
-        # V15新增：合成周线趋势代理指标 (5倍窗口期)
         df['W_MACD'] = ta.trend.macd(close_s, window_slow=130, window_fast=60)
         df['W_MACD_Signal'] = ta.trend.macd_signal(close_s, window_slow=130, window_fast=60, window_sign=45)
         df['W_Trend_Up'] = df['W_MACD'] > df['W_MACD_Signal']
@@ -159,14 +160,10 @@ def load_and_calc_data(t, p):
             return "无"
 
         def get_right_signal(row):
-            # V15 共振逻辑
             if row['Close'] > row['SMA_60'] and row['Close'] > row['SMA_20'] and row['MACD'] > row['MACD_Signal']:
-                if row['W_Trend_Up']:
-                    return "买"
-                else:
-                    return "假突破(屏蔽)" # 大级别空头，拒绝买入
-            elif row['Close'] < row['SMA_20']: 
-                return "卖"
+                if row['W_Trend_Up']: return "买"
+                else: return "假突破(屏蔽)" 
+            elif row['Close'] < row['SMA_20']: return "卖"
             return "无"
 
         df['Left_Sig'] = df.apply(get_left_signal, axis=1)
@@ -174,75 +171,49 @@ def load_and_calc_data(t, p):
         
         return df
     except Exception as e:
-        print(e)
         return pd.DataFrame()
 
 @st.cache_data(ttl=3600) 
 def load_fundamentals(t):
     try:
         yf_ticker = get_yf_ticker(t)
-        # 直接把雅虎财经的整本“财报字典”全部拿过来
         info = yf.Ticker(yf_ticker).info
-        info['名称'] = info.get('shortName', t) # 保留名称字段防止其他代码报错
+        info['名称'] = info.get('shortName', t)
         return info
     except:
         return {}
 
 def run_strategy_sim(df, style, initial_cap=100000):
-    """
-    V16 机构级向量化回测引擎
-    包含了严格的未来函数防范 (shift) 和真实市场摩擦损耗计算。
-    """
-    # ==========================================
-    # 设定真实市场的“毒性”参数 (交易摩擦损耗)
-    # ==========================================
-    COMMISSION = 0.0003  # 券商佣金 (万分之三)
-    STAMP_DUTY = 0.001   # 印花税 (千分之一，仅卖出时收取)
-    SLIPPAGE = 0.002     # 恶劣滑点假设 (千分之二，买卖都要扣除，模拟大资金进出的冲击成本)
+    COMMISSION = 0.0003  
+    STAMP_DUTY = 0.001   
+    SLIPPAGE = 0.002     
 
-    # 1. 计算标的资产每日的“基准涨跌幅”
     daily_ret = df['Close'].pct_change().fillna(0)
-
-    # 2. 向量化解析目标仓位 (0 为空仓，1 为满仓)
     pos = pd.Series(np.nan, index=df.index)
-    if style == "死拿":
-        pos = pos.fillna(1)
+    
+    if style == "死拿": pos = pos.fillna(1)
     else:
         sig_col = 'Left_Sig' if style == "左侧" else 'Right_Sig'
         pos.loc[df[sig_col] == '买'] = 1
         pos.loc[df[sig_col] == '卖'] = 0
-        # 如果当天没有买卖信号，就维持前一天的仓位状态 (向前填充)
         pos = pos.ffill().fillna(0)
 
-    # 3. 极度关键：防止“未来函数” (时间机器作弊)
-    # 你的信号是今天收盘产生的，你只能在【明天】享受涨跌。所以仓位必须往后平移一天！
     actual_pos = pos.shift(1).fillna(0)
-
-    # 4. 计算无摩擦的理论收益
     strategy_ret = actual_pos * daily_ret
-
-    # 5. 捕捉交易动作，计算高昂的摩擦成本
-    # 仓位差值: 1 表示今天执行了买入，-1 表示今天执行了卖出，0 表示没动
     trade_action = actual_pos.diff().fillna(0)
     
-    # 只要发生买入，扣除佣金和滑点
     buy_costs = (trade_action == 1) * (COMMISSION + SLIPPAGE)
-    # 只要发生卖出，扣除印花税、佣金和滑点
     sell_costs = (trade_action == -1) * (STAMP_DUTY + COMMISSION + SLIPPAGE)
 
-    # 6. 扣除“毒性”后的真实净收益
     real_strategy_ret = strategy_ret - buy_costs - sell_costs
-
-    # 7. 向量化计算资金复利曲线
     equity = initial_cap * (1 + real_strategy_ret).cumprod()
-
     return equity.tolist()
 
 # ==========================================
 # 单股分析主干逻辑 
 # ==========================================
 if getattr(st.session_state, 'run_analysis', False):
-    with st.spinner(f"V15 正在穿透多级别周期，抓取 {ticker} 数据..."):
+    with st.spinner(f"V16 引擎正在加载并计算 {ticker} 数据..."):
         df = load_and_calc_data(ticker, period)
         info = load_fundamentals(ticker)
         stock_name = info.get('名称', ticker)
@@ -251,11 +222,11 @@ if getattr(st.session_state, 'run_analysis', False):
         initial_capital = 100000
         df['Eq_Left'] = run_strategy_sim(df, "左侧")
         df['Eq_Right'] = run_strategy_sim(df, "右侧")
-        df['Eq_Hold'] = initial_capital * (df['Close'] / df['Close'].iloc[0])
+        df['Eq_Hold'] = run_strategy_sim(df, "死拿")
 
-        ret_left = (df['Eq_Left'].iloc[-1] - initial_capital) / initial_capital * 100
-        ret_right = (df['Eq_Right'].iloc[-1] - initial_capital) / initial_capital * 100
-        ret_hold = (df['Eq_Hold'].iloc[-1] - initial_capital) / initial_capital * 100
+        ret_left = (df['Eq_Left'][-1] - initial_capital) / initial_capital * 100
+        ret_right = (df['Eq_Right'][-1] - initial_capital) / initial_capital * 100
+        ret_hold = (df['Eq_Hold'][-1] - initial_capital) / initial_capital * 100
 
         results = {"📉 左侧抄底波段": ret_left, "📈 右侧顺势追涨": ret_right, "🛡️ 无脑死拿一直抱": ret_hold}
         best_strategy = max(results, key=results.get)
@@ -264,40 +235,36 @@ if getattr(st.session_state, 'run_analysis', False):
         with tab1:
             st.markdown(f"""
             <div style="background-color: #1E1E1E; padding: 20px; border-radius: 10px; border: 2px solid {'#FFD700' if best_return > 0 else '#FF4500'};">
-                <h2 style="text-align: center; color: white; margin-bottom: 0px;">🏆 V15 AI 智能诊断结论</h2>
-                <h4 style="text-align: center; color: #A0A0A0; margin-top: 10px;">经过过去 {period} 的数据极限推演，【{stock_name}】最适合的流派是：</h4>
+                <h2 style="text-align: center; color: white; margin-bottom: 0px;">🏆 V16 AI 智能诊断结论</h2>
+                <h4 style="text-align: center; color: #A0A0A0; margin-top: 10px;">经过过去 {period} 数据及真实交易损耗推演，【{stock_name}】最适合：</h4>
                 <h1 style="text-align: center; color: {'#00FF7F' if best_return > 0 else '#FF6347'}; font-size: 3em; margin: 10px 0;">{best_strategy}</h1>
-                <p style="text-align: center; color: white; font-size: 1.2em;">历史总收益率可达：<strong>{best_return:.2f}%</strong></p>
+                <p style="text-align: center; color: white; font-size: 1.2em;">扣除手续费后历史总收益率可达：<strong>{best_return:.2f}%</strong></p>
             </div>
             <br>
             """, unsafe_allow_html=True)
             col_1, col_2, col_3 = st.columns(3)
             with col_1:
-                drawdown_h = ((df['Eq_Hold'] - df['Eq_Hold'].cummax()) / df['Eq_Hold'].cummax()).min() * 100
-                st.metric("死拿总收益", f"{ret_hold:.2f}%", f"最大回撤 {drawdown_h:.2f}%", delta_color="inverse")
+                drawdown_h = ((df['Eq_Hold'] - np.maximum.accumulate(df['Eq_Hold'])) / np.maximum.accumulate(df['Eq_Hold'])).min() * 100
+                st.metric("死拿总收益(税后)", f"{ret_hold:.2f}%", f"最大回撤 {drawdown_h:.2f}%", delta_color="inverse")
             with col_2:
-                drawdown_r = ((df['Eq_Right'] - df['Eq_Right'].cummax()) / df['Eq_Right'].cummax()).min() * 100
-                st.metric("右侧总收益", f"{ret_right:.2f}%", f"最大回撤 {drawdown_r:.2f}%", delta_color="inverse")
+                drawdown_r = ((df['Eq_Right'] - np.maximum.accumulate(df['Eq_Right'])) / np.maximum.accumulate(df['Eq_Right'])).min() * 100
+                st.metric("右侧总收益(税后)", f"{ret_right:.2f}%", f"最大回撤 {drawdown_r:.2f}%", delta_color="inverse")
             with col_3:
-                drawdown_l = ((df['Eq_Left'] - df['Eq_Left'].cummax()) / df['Eq_Left'].cummax()).min() * 100
-                st.metric("左侧总收益", f"{ret_left:.2f}%", f"最大回撤 {drawdown_l:.2f}%", delta_color="inverse")
-                # ==========================================
+                drawdown_l = ((df['Eq_Left'] - np.maximum.accumulate(df['Eq_Left'])) / np.maximum.accumulate(df['Eq_Left'])).min() * 100
+                st.metric("左侧总收益(税后)", f"{ret_left:.2f}%", f"最大回撤 {drawdown_l:.2f}%", delta_color="inverse")
+
             # 💎 顶级投顾引擎：ATR 动态风控与仓位计算器
-            # ==========================================
             st.markdown("<br><hr>", unsafe_allow_html=True)
             st.markdown("### 💎 机构级交易执行面板 (Position & Risk Management)")
             
-            # 计算 ATR (Average True Range 真实波动幅度)
             df['ATR'] = ta.volatility.average_true_range(df['High'], df['Low'], df['Close'], window=14)
             current_price = df['Close'].iloc[-1]
             current_atr = df['ATR'].iloc[-1]
             
-            # 设定华尔街标准风控参数
-            risk_per_trade = 0.02 # 单笔交易最大亏损不超过总资金的 2%
-            stop_loss_dist = current_atr * 2 # 止损线设为 2 倍 ATR (过滤日常波动噪音)
+            risk_per_trade = 0.02 
+            stop_loss_dist = current_atr * 2 
             stop_loss_price = current_price - stop_loss_dist
             
-            # 计算建议仓位
             risk_amount = initial_capital * risk_per_trade
             suggested_shares = int(risk_amount / stop_loss_dist) if stop_loss_dist > 0 else 0
             position_value = suggested_shares * current_price
@@ -305,44 +272,23 @@ if getattr(st.session_state, 'run_analysis', False):
 
             col_r1, col_r2, col_r3 = st.columns(3)
             with col_r1:
-                st.metric(
-                    label="🚨 科学止损位 (2倍ATR)", 
-                    value=f"{stop_loss_price:.2f}", 
-                    delta=f"距离现价跌幅 {(stop_loss_price/current_price - 1)*100:.2f}%", 
-                    delta_color="inverse"
-                )
+                st.metric(label="🚨 科学止损位 (2倍ATR)", value=f"{stop_loss_price:.2f}", delta=f"距离现价跌幅 {(stop_loss_price/current_price - 1)*100:.2f}%", delta_color="inverse")
             with col_r2:
-                st.metric(
-                    label="⚖️ 建议买入股数", 
-                    value=f"{suggested_shares:,} 股",
-                    help="基于总资金10万、单笔最大亏损2%的风险平价模型计算得出。"
-                )
+                st.metric(label="⚖️ 建议买入股数", value=f"{suggested_shares:,} 股", help="基于总资金10万、单笔最大亏损2%的风险平价模型计算得出。")
             with col_r3:
-                st.metric(
-                    label="💼 建议建仓比例", 
-                    value=f"{position_pct:.1f}%" if position_pct <= 100 else "100.0% (限制满仓)",
-                    delta="基于当前波动率测算",
-                    delta_color="off"
-                )
+                st.metric(label="💼 建议建仓比例", value=f"{position_pct:.1f}%" if position_pct <= 100 else "100.0% (限制满仓)", delta="基于当前波动率测算", delta_color="off")
 
-            st.info("💡 **顶级投顾指令**：永远不要去猜底！系统已根据该标的近14天的真实波动率(ATR)测算出防弹衣厚度。如果波动率极大（如生物医药股），系统会自动压缩你的建仓比例；如果走势极稳（如银行股），系统会允许你重仓出击。**买入后，请将券商APP的条件单止损价严格设置为上述【科学止损位】。**")
+            st.info("💡 **顶级投顾指令**：系统已根据标的真实波动率测算出防弹衣厚度。买入后，请将券商APP的条件单止损价严格设置为上述【科学止损位】。")
 
         with tab2:
-            st.subheader(f"📉 {stock_name} ({ticker}) - V15 K线信号复盘")
-            
+            st.subheader(f"📉 {stock_name} ({ticker}) - V16 K线信号复盘")
             latest_row = df.iloc[-1]
-            if "右侧" in best_strategy:
-                latest_sig = latest_row['Right_Sig']
-            else:
-                latest_sig = latest_row['Left_Sig'] if "左侧" in best_strategy else "无"
+            latest_sig = latest_row['Right_Sig'] if "右侧" in best_strategy else latest_row['Left_Sig'] if "左侧" in best_strategy else "无"
                 
             col_s1, col_s2, col_s3 = st.columns(3)
             col_s1.metric("最新收盘价", f"{latest_row['Close']:.2f}")
-            
-            # V15 亮点：增加周线大趋势状态显示
             w_trend = "🔥 多头 (支持做多)" if latest_row['W_Trend_Up'] else "❄️ 空头 (危险，过滤假突破)"
             col_s2.metric("当前大级别(周线)环境", w_trend)
-            
             sig_text = "🟢 触发买入" if latest_sig == "买" else "🔴 触发止盈/止损" if latest_sig == "卖" else "⚠️ 假突破屏蔽" if latest_sig == "假突破(屏蔽)" else "⚪ 观望或持有"
             col_s3.metric("战术执行指令", sig_text)
 
@@ -359,19 +305,14 @@ if getattr(st.session_state, 'run_analysis', False):
             st.subheader(f"🕸️ {stock_name} ({ticker}) - 首席分析师全景扫描")
             st.markdown("---")
             
-            # --- 数据清洗与格式化工具 ---
             market_cap = info.get('marketCap', 0)
             market_cap_str = f"{market_cap / 100000000:.2f} 亿" if isinstance(market_cap, (int, float)) and market_cap > 0 else "暂无数据"
             
             def fmt_num(val, is_pct=False):
                 if val is None or val == 'Infinity' or str(val) == 'nan': return "暂无"
-                if isinstance(val, (int, float)):
-                    return f"{val * 100:.2f}%" if is_pct else f"{val:.2f}"
+                if isinstance(val, (int, float)): return f"{val * 100:.2f}%" if is_pct else f"{val:.2f}"
                 return "暂无"
 
-            # ==========================================
-            # 第一排：估值核心 (Valuation) - 决定你买得贵不贵
-            # ==========================================
             st.markdown("#### ⚖️ 核心估值模型 (Valuation)")
             col_v1, col_v2, col_v3, col_v4 = st.columns(4)
             col_v1.metric("总市值", market_cap_str)
@@ -380,10 +321,6 @@ if getattr(st.session_state, 'run_analysis', False):
             col_v4.metric("市净率 (PB)", fmt_num(info.get('priceToBook')))
             
             st.markdown("<br>", unsafe_allow_html=True)
-            
-            # ==========================================
-            # 第二排：盈利与护城河 (Profitability) - 决定公司造血能力
-            # ==========================================
             st.markdown("#### 💰 盈利能力与护城河 (Profitability)")
             col_p1, col_p2, col_p3, col_p4 = st.columns(4)
             col_p1.metric("净资产收益率 (ROE)", fmt_num(info.get('returnOnEquity'), True))
@@ -392,17 +329,12 @@ if getattr(st.session_state, 'run_analysis', False):
             col_p4.metric("销售净利率 (Net Margin)", fmt_num(info.get('profitMargins'), True))
             
             st.markdown("<br>", unsafe_allow_html=True)
-
-            # ==========================================
-            # 第三排：成长与安全边际 (Growth & Risk)
-            # ==========================================
             st.markdown("#### 🚀 成长性与安全边际 (Growth & Risk)")
             col_g1, col_g2, col_g3, col_g4 = st.columns(4)
             col_g1.metric("季度营收同比增速", fmt_num(info.get('revenueGrowth'), True))
             col_g2.metric("季度利润同比增速", fmt_num(info.get('earningsGrowth'), True))
             col_g3.metric("股息率 (Dividend Yield)", fmt_num(info.get('dividendYield'), True))
             
-            # 计算当前价格在 52 周区间的位置（极佳的左侧参考指标）
             high_52 = info.get('fiftyTwoWeekHigh')
             low_52 = info.get('fiftyTwoWeekLow')
             curr_price = info.get('currentPrice') or info.get('regularMarketPrice')
@@ -413,100 +345,65 @@ if getattr(st.session_state, 'run_analysis', False):
             col_g4.metric("52周价格水位线", range_str, f"最低 {fmt_num(low_52)} / 最高 {fmt_num(high_52)}")
             
             st.markdown("---")
-            # ==========================================
-            # 🧠 AI 首席分析师智能诊断引擎
-            # ==========================================
             st.markdown("### 🧠 AI 首席分析师体检报告")
             
             analysis_text = []
-            
-            # 1. 估值诊断 (PE)
             pe = info.get('trailingPE')
             if isinstance(pe, (int, float)):
-                if pe < 0:
-                    analysis_text.append("⚠️ **【估值预警】**：公司目前处于亏损状态 (市盈率为负)。请重点关注其营收增速是否在爆发，否则需警惕现金流断裂风险。")
-                elif pe < 15:
-                    analysis_text.append("🟢 **【估值极具吸引力】**：当前动态市盈率极低 (<15倍)。这通常意味着极高的安全边际，存在左侧‘捡漏’的巨大潜力；但也需警惕是否是市场预期极度悲观导致的‘价值陷阱’。")
-                elif pe > 50:
-                    analysis_text.append("🔴 **【高估值溢价】**：市盈率极高 (>50倍)！市场对其未来成长性抱有巨大期待（或者存在炒作泡沫）。一旦财报增速不及预期，极易发生惨烈的‘杀估值’，右侧操作务必严格设置止损线。")
-                else:
-                    analysis_text.append("⚪ **【估值处于合理中枢】**：市盈率处于 15-50 倍的常规区间，目前没有明显的估值泡沫或极度低估，主要赚取公司盈利增长的钱。")
+                if pe < 0: analysis_text.append("⚠️ **【估值预警】**：公司目前处于亏损状态 (市盈率为负)。")
+                elif pe < 15: analysis_text.append("🟢 **【估值极具吸引力】**：当前动态市盈率极低 (<15倍)。存在左侧‘捡漏’的巨大潜力。")
+                elif pe > 50: analysis_text.append("🔴 **【高估值溢价】**：市盈率极高 (>50倍)！需警惕杀估值风险。")
+                else: analysis_text.append("⚪ **【估值处于合理中枢】**：市盈率处于 15-50 倍的常规区间。")
 
-            # 2. 护城河诊断 (ROE & 毛利率)
             roe = info.get('returnOnEquity')
             gross_margin = info.get('grossMargins')
-            
-            if isinstance(roe, (int, float)) and roe > 0.15:
-                analysis_text.append("🔥 **【极强护城河】**：净资产收益率 (ROE) 超过 15%！这是最核心的盈利指标，说明公司具备极强的自我造血能力和行业壁垒，是一台优秀的赚钱机器。")
-            elif isinstance(roe, (int, float)) and roe < 0.05:
-                analysis_text.append("⚠️ **【造血能力疲软】**：ROE 偏低 (<5%)，资金利用效率不高，生意模式可能较为艰辛或正处于周期底部。")
+            if isinstance(roe, (int, float)) and roe > 0.15: analysis_text.append("🔥 **【极强护城河】**：净资产收益率 (ROE) 超过 15%！说明公司具备极强的自我造血能力。")
+            elif isinstance(roe, (int, float)) and roe < 0.05: analysis_text.append("⚠️ **【造血能力疲软】**：ROE 偏低 (<5%)，资金利用效率不高。")
 
-            if isinstance(gross_margin, (int, float)) and gross_margin > 0.60:
-                analysis_text.append("💊 **【印钞机属性】**：销售毛利率超过 60%！这在创新药企或顶级科技股中非常典型，说明其产品具有极强的技术垄断性和定价权。")
-            elif isinstance(gross_margin, (int, float)) and gross_margin < 0.15:
-                analysis_text.append("🧱 **【苦哈哈的辛苦钱】**：毛利率低于 15%，典型的薄利多销或制造业底端，极度依赖规模效应，抗风险能力较弱。")
+            if isinstance(gross_margin, (int, float)) and gross_margin > 0.60: analysis_text.append("💊 **【印钞机属性】**：销售毛利率超过 60%！具备极强定价权。")
+            elif isinstance(gross_margin, (int, float)) and gross_margin < 0.15: analysis_text.append("🧱 **【苦哈哈的辛苦钱】**：毛利率低于 15%，典型的薄利多销。")
 
-            # 3. 防御力诊断 (股息率)
             div = info.get('dividendYield')
-            if isinstance(div, (int, float)) and div > 0.04:
-                analysis_text.append("🛡️ **【无敌现金牛】**：股息率高达 4% 以上，具备极强的‘类债券’防守属性。在熊市或震荡市中，光靠分红就能提供强力缓冲，是极佳的底仓防御品种。")
+            if isinstance(div, (int, float)) and div > 0.04: analysis_text.append("🛡️ **【无敌现金牛】**：股息率高达 4% 以上，是极佳的底仓防御品种。")
 
-            # 渲染报告
-            # 渲染报告
-            if not analysis_text:
-                st.warning("暂无足够的基本面数据生成 AI 体检报告。")
+            if not analysis_text: st.warning("暂无足够的基本面数据生成 AI 体检报告。")
             else:
                 for text in analysis_text:
-                    if "🟢" in text or "🔥" in text or "💊" in text or "🛡️" in text:
-                        st.success(text)
-                    elif "⚠️" in text:
-                        st.warning(text)
-                    elif "🔴" in text:
-                        st.error(text)
-                    else:
-                        st.info(text)
+                    if "🟢" in text or "🔥" in text or "💊" in text or "🛡️" in text: st.success(text)
+                    elif "⚠️" in text: st.warning(text)
+                    elif "🔴" in text: st.error(text)
+                    else: st.info(text)
 
-# ==========================================
-# TAB 4 & 5
-# ==========================================
+    else:
+        st.error("无法获取数据，请检查股票代码。")
+else:
+    with tab1: st.info("👈 请在左侧选择标的并点击启动回测。")
+
 # ==========================================
 # 组合管理模块：Tab 4 (相关性) 与 Tab 5 (压力测试)
 # ==========================================
 with tab4:
     st.subheader("🔥 盘石组合 - 资产相关性热力图 (风险隔离鉴定)")
-    st.markdown("计算核心资产池中各标的之间的价格联动性。**数值越接近 1，说明同涨同跌；接近 0 或负数，说明具备极佳的风险对冲（防弹衣）效果。**")
+    st.markdown("**数值越接近 1，说明同涨同跌；接近 0 或负数，说明具备极佳的风险对冲（防弹衣）效果。**")
     
     if st.button("📊 生成组合相关性矩阵", key="btn_corr", type="primary"):
         with st.spinner("正在抽取全军数据，计算皮尔逊相关系数..."):
             try:
-                # 建立字典映射，方便将代码替换为直观的中文名
                 rename_dict = {get_yf_ticker(v): k.split('(')[0] for k, v in ticker_dict.items() if v != "custom"}
                 pool_tickers = list(rename_dict.keys())
-                
-                # 下载过去1年的收盘价数据用于计算相关性
                 data = yf.download(pool_tickers, period="1y", progress=False)['Close']
                 data.rename(columns=rename_dict, inplace=True)
                 
-                # 计算日收益率的皮尔逊相关性矩阵
                 corr_matrix = data.pct_change().corr()
-                
-                # 用 Plotly 绘制精美热力图
-                fig_corr = px.imshow(
-                    corr_matrix, 
-                    text_auto=".2f", 
-                    color_continuous_scale="RdBu_r", 
-                    zmin=-1, zmax=1,
-                    aspect="auto"
-                )
+                fig_corr = px.imshow(corr_matrix, text_auto=".2f", color_continuous_scale="RdBu_r", zmin=-1, zmax=1, aspect="auto")
                 fig_corr.update_layout(template="plotly_dark", height=600)
                 st.plotly_chart(fig_corr, use_container_width=True)
-                st.info("💡 **首席分析师锐评**：寻找深蓝色的方块！如果你发现某两个资产（比如中远海能和翰森制药）的相关性非常低甚至为负，说明它们是非常完美的‘联合用药’组合，能极大平滑你的资金曲线，让你晚上睡得安稳。")
             except Exception as e:
                 st.error(f"计算失败，请检查网络或股票代码：{e}")
 
 with tab5:
     st.subheader("🛡️ 盘石组合 - 极端压力测试 (历史最大回撤)")
-    st.markdown("模拟测试：在过去一年中，如果将资金**等权重分散**买入上述所有核心资产，你的心脏（账户净值）需要承受的最大打击是多少？")
+    st.markdown("模拟测试：在过去一年中，如果将资金**等权重分散**买入上述所有核心资产，你的账户净值需要承受的最大打击是多少？")
     
     if st.button("🌪️ 启动黑天鹅压力测试", key="btn_stress", type="primary"):
         with st.spinner("正在模拟极端市场环境..."):
@@ -515,25 +412,19 @@ with tab5:
                 data = yf.download(pool_tickers, period="1y", progress=False)['Close']
                 daily_returns = data.pct_change().fillna(0)
                 
-                # 模拟等权重组合收益率 (类似 ETF)
                 port_return = daily_returns.mean(axis=1)
-                # 计算组合复利净值曲线
                 cum_return = (1 + port_return).cumprod()
-                # 计算滚动最大回撤 (Underwater 算法)
                 rolling_max = cum_return.cummax()
                 drawdown = (cum_return - rolling_max) / rolling_max
                 max_drawdown = drawdown.min() * 100
                 
                 col_st1, col_st2 = st.columns(2)
                 col_st1.metric("盘石组合近 1 年累计收益", f"{(cum_return.iloc[-1] - 1)*100:.2f}%")
-                col_st2.metric("遭遇的历史最大回撤 (骨折线)", f"{max_drawdown:.2f}%", delta_color="inverse")
+                col_st2.metric("遭遇的历史最大回撤", f"{max_drawdown:.2f}%", delta_color="inverse")
                 
-                # 绘制资金回撤水下图
                 fig_dd = go.Figure()
-                fig_dd.add_trace(go.Scatter(x=drawdown.index, y=drawdown*100, fill='tozeroy', fillcolor='rgba(255, 69, 0, 0.3)', line=dict(color='orangered'), name='资金回撤幅度 (%)'))
-                fig_dd.update_layout(title="组合资金水位图 (Underwater Chart)", template="plotly_dark", height=400, yaxis_title="回撤幅度 (%)")
+                fig_dd.add_trace(go.Scatter(x=drawdown.index, y=drawdown*100, fill='tozeroy', fillcolor='rgba(255, 69, 0, 0.3)', line=dict(color='orangered'), name='资金回撤 (%)'))
+                fig_dd.update_layout(title="组合资金水位图 (Underwater Chart)", template="plotly_dark", height=400)
                 st.plotly_chart(fig_dd, use_container_width=True)
-                
-                st.info("💡 **首席分析师锐评**：比起看赚了多少钱，活下来更重要。图中深深的红色‘深渊’就是你账户最惨的时候。如果组合的最大回撤超过了 -20%，对于上班族来说心理压力就会极大，说明你的‘药效太猛、毒性太大’（进攻性资产过多），必须增加【中国银行】这类防御型资产的权重来稀释波动！")
             except Exception as e:
                 st.error(f"压力测试失败：{e}")
