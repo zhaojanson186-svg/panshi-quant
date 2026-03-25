@@ -222,6 +222,51 @@ if getattr(st.session_state, 'run_analysis', False):
             with col_3:
                 drawdown_l = ((df['Eq_Left'] - df['Eq_Left'].cummax()) / df['Eq_Left'].cummax()).min() * 100
                 st.metric("左侧总收益", f"{ret_left:.2f}%", f"最大回撤 {drawdown_l:.2f}%", delta_color="inverse")
+                # ==========================================
+            # 💎 顶级投顾引擎：ATR 动态风控与仓位计算器
+            # ==========================================
+            st.markdown("<br><hr>", unsafe_allow_html=True)
+            st.markdown("### 💎 机构级交易执行面板 (Position & Risk Management)")
+            
+            # 计算 ATR (Average True Range 真实波动幅度)
+            df['ATR'] = ta.volatility.average_true_range(df['High'], df['Low'], df['Close'], window=14)
+            current_price = df['Close'].iloc[-1]
+            current_atr = df['ATR'].iloc[-1]
+            
+            # 设定华尔街标准风控参数
+            risk_per_trade = 0.02 # 单笔交易最大亏损不超过总资金的 2%
+            stop_loss_dist = current_atr * 2 # 止损线设为 2 倍 ATR (过滤日常波动噪音)
+            stop_loss_price = current_price - stop_loss_dist
+            
+            # 计算建议仓位
+            risk_amount = initial_capital * risk_per_trade
+            suggested_shares = int(risk_amount / stop_loss_dist) if stop_loss_dist > 0 else 0
+            position_value = suggested_shares * current_price
+            position_pct = (position_value / initial_capital) * 100
+
+            col_r1, col_r2, col_r3 = st.columns(3)
+            with col_r1:
+                st.metric(
+                    label="🚨 科学止损位 (2倍ATR)", 
+                    value=f"{stop_loss_price:.2f}", 
+                    delta=f"距离现价跌幅 {(stop_loss_price/current_price - 1)*100:.2f}%", 
+                    delta_color="inverse"
+                )
+            with col_r2:
+                st.metric(
+                    label="⚖️ 建议买入股数", 
+                    value=f"{suggested_shares:,} 股",
+                    help="基于总资金10万、单笔最大亏损2%的风险平价模型计算得出。"
+                )
+            with col_r3:
+                st.metric(
+                    label="💼 建议建仓比例", 
+                    value=f"{position_pct:.1f}%" if position_pct <= 100 else "100.0% (限制满仓)",
+                    delta="基于当前波动率测算",
+                    delta_color="off"
+                )
+
+            st.info("💡 **顶级投顾指令**：永远不要去猜底！系统已根据该标的近14天的真实波动率(ATR)测算出防弹衣厚度。如果波动率极大（如生物医药股），系统会自动压缩你的建仓比例；如果走势极稳（如银行股），系统会允许你重仓出击。**买入后，请将券商APP的条件单止损价严格设置为上述【科学止损位】。**")
 
         with tab2:
             st.subheader(f"📉 {stock_name} ({ticker}) - V15 K线信号复盘")
