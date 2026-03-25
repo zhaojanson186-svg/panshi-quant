@@ -93,12 +93,13 @@ st.markdown("---")
 # ==========================================
 # 页面主体 Tabs
 # ==========================================
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🏆 AI 智能多维回测", 
     "📉 K线信号复盘", 
     "🕸️ 首席分析师全景扫描", 
     "🔥 组合相关性热力图",
-    "🛡️ 组合压力测试 (盘石计划)"
+    "🛡️ 组合压力测试 (盘石计划)",
+    "🔮 蒙特卡洛未来推演"
 ])
 
 # ==========================================
@@ -458,3 +459,67 @@ with tab5:
                 st.plotly_chart(fig_dd, use_container_width=True)
             except Exception as e:
                 st.error(f"压力测试失败：{e}")
+                # ==========================================
+# 🔮 终极武器：Tab 6 蒙特卡洛未来推演引擎
+# ==========================================
+if getattr(st.session_state, 'run_analysis', False) and not df.empty:
+    with tab6:
+        st.subheader(f"🔮 {stock_name} ({ticker}) - 蒙特卡洛未来 30 天概率推演")
+        st.markdown("基于 **几何布朗运动 (GBM)** 算法，结合该资产过去一年的历史波动率与收益率均值，引入随机游走变量，模拟出 **100 种可能的未来平行宇宙**。")
+        
+        if st.button("🌌 启动量子算力推演未来", type="primary", key="btn_mc"):
+            with st.spinner("正在调用蒙特卡洛引擎，疯狂计算平行宇宙的 100 条折叠时间线..."):
+                try:
+                    # 1. 提取资产的“基因特征” (波动率与预期收益)
+                    returns = df['Close'].pct_change().dropna()
+                    mu = returns.mean()
+                    sigma = returns.std()
+                    last_price = df['Close'].iloc[-1]
+                    
+                    # 2. 设定推演参数
+                    sim_days = 30 # 推演未来 30 个交易日
+                    sim_runs = 100 # 模拟 100 种平行宇宙
+                    
+                    # 3. 核心算法：几何布朗运动 (S_t = S_{t-1} * exp((mu - sigma^2/2) + sigma * Z))
+                    sim_paths = np.zeros((sim_days, sim_runs))
+                    sim_paths[0] = last_price
+                    
+                    for t in range(1, sim_days):
+                        # Z 为标准正态分布的随机游走
+                        Z = np.random.standard_normal(sim_runs)
+                        sim_paths[t] = sim_paths[t-1] * np.exp((mu - 0.5 * sigma**2) + sigma * Z)
+                        
+                    # 4. 数据统计与百分位提取
+                    p5 = np.percentile(sim_paths, 5, axis=1)   # 极度悲观线 (底线)
+                    p50 = np.percentile(sim_paths, 50, axis=1) # 大概率中枢线
+                    p95 = np.percentile(sim_paths, 95, axis=1) # 极度乐观线 (天花板)
+                    
+                    # 5. 绘制震撼的概率云图谱
+                    fig_mc = go.Figure()
+                    days_x = list(range(1, sim_days + 1))
+                    
+                    # 画出 100 条幽灵般的平行宇宙轨迹
+                    for i in range(sim_runs):
+                        fig_mc.add_trace(go.Scatter(x=days_x, y=sim_paths[:, i], mode='lines', line=dict(color='rgba(0, 191, 255, 0.05)'), showlegend=False, hoverinfo='skip'))
+                        
+                    # 画出三根核心概率线
+                    fig_mc.add_trace(go.Scatter(x=days_x, y=p95, mode='lines', line=dict(color='lime', width=2, dash='dash'), name='乐观预期 (Top 5%)'))
+                    fig_mc.add_trace(go.Scatter(x=days_x, y=p50, mode='lines', line=dict(color='white', width=3), name='大概率中枢 (中位数)'))
+                    fig_mc.add_trace(go.Scatter(x=days_x, y=p5, mode='lines', line=dict(color='red', width=2, dash='dash'), name='悲观预期 (Bottom 5%)'))
+                    
+                    fig_mc.update_layout(title=f"{stock_name} 蒙特卡洛 30 天路径推演图谱", template="plotly_dark", height=600, xaxis_title="未来天数 (交易日)", yaxis_title="预测价格")
+                    st.plotly_chart(fig_mc, use_container_width=True)
+                    
+                    # 6. 提取 30 天后的最终审判数据
+                    end_p50 = p50[-1]
+                    end_p95 = p95[-1]
+                    end_p5 = p5[-1]
+                    
+                    col_m1, col_m2, col_m3 = st.columns(3)
+                    col_m1.metric("⚖️ 30天后中性预期 (中枢)", f"{end_p50:.2f}", f"{(end_p50/last_price - 1)*100:.2f}%")
+                    col_m2.metric("🚀 30天后极度乐观 (天花板)", f"{end_p95:.2f}", f"{(end_p95/last_price - 1)*100:.2f}%")
+                    col_m3.metric("🩸 30天后极度悲观 (底线)", f"{end_p5:.2f}", f"{(end_p5/last_price - 1)*100:.2f}%", delta_color="inverse")
+                    
+                    st.info("💡 **顶级基金经理内参**：不要做算命先生，要做概率玩家！[蒙特卡洛模拟] 告诉你的是【赔率分布】。如果图中的【极度悲观线】跌破了你的止损位，或者让你夜不能寐，说明当前的仓位超出了你的心脏负荷，请立刻减仓！反之，如果大概率中枢稳步向上，闭上眼睛，让利润奔跑。")
+                except Exception as e:
+                    st.error(f"算力引擎过载，推演失败：{e}")
