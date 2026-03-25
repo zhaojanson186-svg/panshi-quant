@@ -27,37 +27,54 @@ def get_yf_ticker(code):
     return code
 
 @st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600)
 def get_ak_hist(ticker, period_str):
-    """V17 核心：使用 AKShare 抓取极其精准的前复权 (qfq) K线数据"""
+    """V17.1 核心：双引擎容灾机制 (AKShare 主力 + YFinance 备用)"""
     end_date = datetime.now()
     years = int(period_str[0]) if period_str[0].isdigit() else 1
     start_date = end_date - timedelta(days=365 * years)
-    
     start_str = start_date.strftime("%Y%m%d")
     end_str = end_date.strftime("%Y%m%d")
-    
     clean_ticker = ticker.upper().replace('.SS', '').replace('.SZ', '').replace('.HK', '')
     
+    df = pd.DataFrame()
+    
+    # 1. 尝试使用国产高精尖引擎 AKShare
     try:
-        # 判断是否为 A 股 (6位数字，以0, 3, 6开头)
         if len(clean_ticker) == 6 and clean_ticker[0] in ['0', '3', '6']:
             df = ak.stock_zh_a_hist(symbol=clean_ticker, period="daily", start_date=start_str, end_date=end_str, adjust="qfq")
         else:
-            # 港股处理 (补齐 5 位数)
             hk_ticker = clean_ticker.zfill(5)
             df = ak.stock_hk_hist(symbol=hk_ticker, period="daily", start_date=start_str, end_date=end_str, adjust="qfq")
             
         if df is not None and not df.empty:
-            # 统一中英文列名，完美对接下游 V15 算力引擎
             df.rename(columns={'日期': 'Date', '开盘': 'Open', '最高': 'High', '最低': 'Low', '收盘': 'Close', '成交量': 'Volume'}, inplace=True)
             df['Date'] = pd.to_datetime(df['Date'])
             df.set_index('Date', inplace=True)
             for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
-            return df.dropna(subset=['Close'])
-    except Exception as e:
-        pass
-    return pd.DataFrame()
+            df = df.dropna(subset=['Close'])
+    except Exception:
+        pass # AKShare 失败，保持 df 为空，进入下一步
+        
+    # 2. 🚨 容灾触发：如果 AKShare 被海外防火墙拦截，瞬间启动 YFinance 备用引擎
+    if df is None or df.empty:
+        try:
+            yf_ticker = get_yf_ticker(ticker)
+            p_map = {"1年": "1y", "2年": "2y", "3年": "3y", "5年": "5y"}
+            yf_df = yf.Ticker(yf_ticker).history(period=p_map.get(period_str, "5y"))
+            if not yf_df.empty:
+                yf_df.reset_index(inplace=True)
+                date_col = 'Date' if 'Date' in yf_df.columns else 'Datetime'
+                yf_df.rename(columns={date_col: 'Date'}, inplace=True)
+                # 统一时区处理，防止画图报错
+                yf_df['Date'] = pd.to_datetime(yf_df['Date']).dt.tz_localize(None)
+                yf_df.set_index('Date', inplace=True)
+                df = yf_df
+        except Exception:
+            pass
+            
+    return df
 
 ticker_dict = {
     "中国银行(金融护卫)": "601988",
