@@ -292,14 +292,44 @@ if getattr(st.session_state, 'run_analysis', False):
             sig_text = "🟢 触发买入" if latest_sig == "买" else "🔴 触发止盈/止损" if latest_sig == "卖" else "⚠️ 假突破屏蔽" if latest_sig == "假突破(屏蔽)" else "⚪ 观望或持有"
             col_s3.metric("战术执行指令", sig_text)
 
-            fig_k = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
+           # ==========================================
+            # 📊 彭博级三联屏图表 (K线 + MACD + Vol/RSI)
+            # ==========================================
+            fig_k = make_subplots(
+                rows=3, cols=1, 
+                shared_xaxes=True, 
+                vertical_spacing=0.03, 
+                row_heights=[0.6, 0.2, 0.2],
+                specs=[[{"secondary_y": False}], [{"secondary_y": False}], [{"secondary_y": True}]]
+            )
+            
+            # 1. 顶层主图：K线与生命线
             fig_k.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='K线'), row=1, col=1)
-            fig_k.add_trace(go.Scatter(x=df.index, y=df['SMA_20'], line=dict(color='cyan', width=2), name='20日生命线'), row=1, col=1)
-            fig_k.add_trace(go.Scatter(x=df.index, y=df['SMA_60'], line=dict(color='orange', width=2), name='60日牛熊线'), row=1, col=1)
-            colors = ['red' if row['Open'] > row['Close'] else 'green' for index, row in df.iterrows()]
-            fig_k.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors, name='成交量'), row=2, col=1)
-            fig_k.update_layout(height=600, xaxis_rangeslider_visible=False, template="plotly_dark", margin=dict(l=0, r=0, t=30, b=0))
+            fig_k.add_trace(go.Scatter(x=df.index, y=df['SMA_20'], line=dict(color='cyan', width=1.5), name='20日生命线'), row=1, col=1)
+            fig_k.add_trace(go.Scatter(x=df.index, y=df['SMA_60'], line=dict(color='orange', width=1.5), name='60日牛熊线'), row=1, col=1)
+            
+            # 2. 中层副图：MACD 动量共振
+            macd_colors = ['#2ca02c' if val > 0 else '#d62728' for val in df['MACD_Hist']]
+            fig_k.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], marker_color=macd_colors, name='MACD 柱'), row=2, col=1)
+            fig_k.add_trace(go.Scatter(x=df.index, y=df['MACD'], line=dict(color='white', width=1.5), name='DIF (快线)'), row=2, col=1)
+            fig_k.add_trace(go.Scatter(x=df.index, y=df['MACD_Signal'], line=dict(color='yellow', width=1.5), name='DEA (慢线)'), row=2, col=1)
+            
+            # 3. 底层副图：成交量与 RSI 情绪雷达 (双Y轴)
+            colors_vol = ['#d62728' if row['Open'] > row['Close'] else '#2ca02c' for index, row in df.iterrows()]
+            fig_k.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors_vol, name='成交量', opacity=0.5), row=3, col=1, secondary_y=False)
+            
+            # 叠加 RSI 情绪紫线
+            fig_k.add_trace(go.Scatter(x=df.index, y=df['RSI'], line=dict(color='magenta', width=2), name='RSI(14) 情绪值'), row=3, col=1, secondary_y=True)
+            # 画出 RSI 的极度冰点和沸点预警线
+            fig_k.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1, secondary_y=True, annotation_text="超买区 (危险)")
+            fig_k.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1, secondary_y=True, annotation_text="超卖区 (机会)")
+            
+            # 美化界面布局
+            fig_k.update_layout(height=850, xaxis_rangeslider_visible=False, template="plotly_dark", margin=dict(l=10, r=10, t=30, b=10))
+            fig_k.update_yaxes(title_text="RSI (0-100)", range=[0, 100], secondary_y=True, row=3, col=1)
+            
             st.plotly_chart(fig_k, use_container_width=True)
+            st.info("💡 **投顾读图指南**：第一眼看顶层 K 线是否站上蓝线(20日)；第二眼看中层 MACD 柱子是否翻绿(多头)；第三眼看底层 RSI 紫线是否从绿色虚线(30冰点)反弹。三者共振，即为重仓出击之时！")
 
         with tab3:
             st.subheader(f"🕸️ {stock_name} ({ticker}) - 首席分析师全景扫描")
