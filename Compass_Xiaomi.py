@@ -365,5 +365,71 @@ if getattr(st.session_state, 'run_analysis', False):
 # ==========================================
 # TAB 4 & 5
 # ==========================================
-with tab4: st.markdown("🔥 组合相关性热力图模块就绪。请在需要时独立运算。")
-with tab5: st.markdown("🛡️ 组合压力测试模块就绪。")
+# ==========================================
+# 组合管理模块：Tab 4 (相关性) 与 Tab 5 (压力测试)
+# ==========================================
+with tab4:
+    st.subheader("🔥 盘石组合 - 资产相关性热力图 (风险隔离鉴定)")
+    st.markdown("计算核心资产池中各标的之间的价格联动性。**数值越接近 1，说明同涨同跌；接近 0 或负数，说明具备极佳的风险对冲（防弹衣）效果。**")
+    
+    if st.button("📊 生成组合相关性矩阵", key="btn_corr", type="primary"):
+        with st.spinner("正在抽取全军数据，计算皮尔逊相关系数..."):
+            try:
+                # 建立字典映射，方便将代码替换为直观的中文名
+                rename_dict = {get_yf_ticker(v): k.split('(')[0] for k, v in ticker_dict.items() if v != "custom"}
+                pool_tickers = list(rename_dict.keys())
+                
+                # 下载过去1年的收盘价数据用于计算相关性
+                data = yf.download(pool_tickers, period="1y", progress=False)['Close']
+                data.rename(columns=rename_dict, inplace=True)
+                
+                # 计算日收益率的皮尔逊相关性矩阵
+                corr_matrix = data.pct_change().corr()
+                
+                # 用 Plotly 绘制精美热力图
+                fig_corr = px.imshow(
+                    corr_matrix, 
+                    text_auto=".2f", 
+                    color_continuous_scale="RdBu_r", 
+                    zmin=-1, zmax=1,
+                    aspect="auto"
+                )
+                fig_corr.update_layout(template="plotly_dark", height=600)
+                st.plotly_chart(fig_corr, use_container_width=True)
+                st.info("💡 **首席分析师锐评**：寻找深蓝色的方块！如果你发现某两个资产（比如中远海能和翰森制药）的相关性非常低甚至为负，说明它们是非常完美的‘联合用药’组合，能极大平滑你的资金曲线，让你晚上睡得安稳。")
+            except Exception as e:
+                st.error(f"计算失败，请检查网络或股票代码：{e}")
+
+with tab5:
+    st.subheader("🛡️ 盘石组合 - 极端压力测试 (历史最大回撤)")
+    st.markdown("模拟测试：在过去一年中，如果将资金**等权重分散**买入上述所有核心资产，你的心脏（账户净值）需要承受的最大打击是多少？")
+    
+    if st.button("🌪️ 启动黑天鹅压力测试", key="btn_stress", type="primary"):
+        with st.spinner("正在模拟极端市场环境..."):
+            try:
+                pool_tickers = [get_yf_ticker(v) for k, v in ticker_dict.items() if v != "custom"]
+                data = yf.download(pool_tickers, period="1y", progress=False)['Close']
+                daily_returns = data.pct_change().fillna(0)
+                
+                # 模拟等权重组合收益率 (类似 ETF)
+                port_return = daily_returns.mean(axis=1)
+                # 计算组合复利净值曲线
+                cum_return = (1 + port_return).cumprod()
+                # 计算滚动最大回撤 (Underwater 算法)
+                rolling_max = cum_return.cummax()
+                drawdown = (cum_return - rolling_max) / rolling_max
+                max_drawdown = drawdown.min() * 100
+                
+                col_st1, col_st2 = st.columns(2)
+                col_st1.metric("盘石组合近 1 年累计收益", f"{(cum_return.iloc[-1] - 1)*100:.2f}%")
+                col_st2.metric("遭遇的历史最大回撤 (骨折线)", f"{max_drawdown:.2f}%", delta_color="inverse")
+                
+                # 绘制资金回撤水下图
+                fig_dd = go.Figure()
+                fig_dd.add_trace(go.Scatter(x=drawdown.index, y=drawdown*100, fill='tozeroy', fillcolor='rgba(255, 69, 0, 0.3)', line=dict(color='orangered'), name='资金回撤幅度 (%)'))
+                fig_dd.update_layout(title="组合资金水位图 (Underwater Chart)", template="plotly_dark", height=400, yaxis_title="回撤幅度 (%)")
+                st.plotly_chart(fig_dd, use_container_width=True)
+                
+                st.info("💡 **首席分析师锐评**：比起看赚了多少钱，活下来更重要。图中深深的红色‘深渊’就是你账户最惨的时候。如果组合的最大回撤超过了 -20%，对于上班族来说心理压力就会极大，说明你的‘药效太猛、毒性太大’（进攻性资产过多），必须增加【中国银行】这类防御型资产的权重来稀释波动！")
+            except Exception as e:
+                st.error(f"压力测试失败：{e}")
