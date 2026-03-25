@@ -348,11 +348,19 @@ if getattr(st.session_state, 'run_analysis', False):
                 analysis_text.append("🛡️ **【无敌现金牛】**：股息率高达 4% 以上，具备极强的‘类债券’防守属性。在熊市或震荡市中，光靠分红就能提供强力缓冲，是极佳的底仓防御品种。")
 
             # 渲染报告
+            # 渲染报告
             if not analysis_text:
                 st.warning("暂无足够的基本面数据生成 AI 体检报告。")
             else:
                 for text in analysis_text:
-                    st.success(text) if "🟢" in text or "🔥" in text or "💊" in text or "🛡️" in text else st.warning(text) if "⚠️" in text else st.error(text) if "🔴" in text else st.info(text)
+                    if "🟢" in text or "🔥" in text or "💊" in text or "🛡️" in text:
+                        st.success(text)
+                    elif "⚠️" in text:
+                        st.warning(text)
+                    elif "🔴" in text:
+                        st.error(text)
+                    else:
+                        st.info(text)
 
 # ==========================================
 # TAB 4 & 5
