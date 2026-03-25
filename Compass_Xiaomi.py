@@ -122,12 +122,10 @@ def load_and_calc_data(t, p):
 def load_fundamentals(t):
     try:
         yf_ticker = get_yf_ticker(t)
+        # 直接把雅虎财经的整本“财报字典”全部拿过来
         info = yf.Ticker(yf_ticker).info
-        return {
-            '名称': info.get('shortName', t),
-            '动态市盈率': info.get('trailingPE', '-'),
-            '总市值': info.get('marketCap', 0)
-        }
+        info['名称'] = info.get('shortName', t) # 保留名称字段防止其他代码报错
+        return info
     except:
         return {}
 
@@ -254,33 +252,64 @@ if getattr(st.session_state, 'run_analysis', False):
             st.plotly_chart(fig_k, use_container_width=True)
 
         with tab3:
-            st.subheader(f"🕸️ {stock_name} ({ticker}) - 基本面估值雷达")
+            st.subheader(f"🕸️ {stock_name} ({ticker}) - 首席分析师全景扫描")
             st.markdown("---")
             
-            # 提取我们在 load_fundamentals 函数里抓取到的数据
-            pe_ratio = info.get('动态市盈率', '暂无数据')
-            market_cap = info.get('总市值', 0)
+            # --- 数据清洗与格式化工具 ---
+            market_cap = info.get('marketCap', 0)
+            market_cap_str = f"{market_cap / 100000000:.2f} 亿" if isinstance(market_cap, (int, float)) and market_cap > 0 else "暂无数据"
             
-            # 将市值格式化为“亿”为单位，方便阅读
-            if isinstance(market_cap, (int, float)) and market_cap > 0:
-                market_cap_str = f"{market_cap / 100000000:.2f} 亿"
-            else:
-                market_cap_str = "暂无数据"
+            def fmt_num(val, is_pct=False):
+                if val is None or val == 'Infinity' or str(val) == 'nan': return "暂无"
+                if isinstance(val, (int, float)):
+                    return f"{val * 100:.2f}%" if is_pct else f"{val:.2f}"
+                return "暂无"
 
-            # 使用三个列来漂亮地展示基本面
-            col_f1, col_f2, col_f3 = st.columns(3)
-            with col_f1:
-                st.metric(label="🏢 公司名称", value=stock_name)
-            with col_f2:
-                st.metric(label="💰 总市值", value=market_cap_str)
-            with col_f3:
-                st.metric(label="⚖️ 动态市盈率 (PE)", value=pe_ratio)
-                
-            st.info("💡 提示：盘石量化系统侧重于量价突破，基本面数据主要用于【防雷】。当动态市盈率出现极端异常（如负数或数百倍）且处于下行通道时，即使触发右侧买入也需谨慎控制仓位。")
-    else:
-        st.error("无法获取数据，请检查股票代码。")
-else:
-    with tab1: st.info("👈 请在左侧选择标的并点击启动回测。")
+            # ==========================================
+            # 第一排：估值核心 (Valuation) - 决定你买得贵不贵
+            # ==========================================
+            st.markdown("#### ⚖️ 核心估值模型 (Valuation)")
+            col_v1, col_v2, col_v3, col_v4 = st.columns(4)
+            col_v1.metric("总市值", market_cap_str)
+            col_v2.metric("TTM 动态市盈率 (PE)", fmt_num(info.get('trailingPE')))
+            col_v3.metric("远期市盈率预估 (Fwd PE)", fmt_num(info.get('forwardPE')))
+            col_v4.metric("市净率 (PB)", fmt_num(info.get('priceToBook')))
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # ==========================================
+            # 第二排：盈利与护城河 (Profitability) - 决定公司造血能力
+            # ==========================================
+            st.markdown("#### 💰 盈利能力与护城河 (Profitability)")
+            col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+            col_p1.metric("净资产收益率 (ROE)", fmt_num(info.get('returnOnEquity'), True))
+            col_p2.metric("总资产收益率 (ROA)", fmt_num(info.get('returnOnAssets'), True))
+            col_p3.metric("销售毛利率 (Gross Margin)", fmt_num(info.get('grossMargins'), True))
+            col_p4.metric("销售净利率 (Net Margin)", fmt_num(info.get('profitMargins'), True))
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # ==========================================
+            # 第三排：成长与安全边际 (Growth & Risk)
+            # ==========================================
+            st.markdown("#### 🚀 成长性与安全边际 (Growth & Risk)")
+            col_g1, col_g2, col_g3, col_g4 = st.columns(4)
+            col_g1.metric("季度营收同比增速", fmt_num(info.get('revenueGrowth'), True))
+            col_g2.metric("季度利润同比增速", fmt_num(info.get('earningsGrowth'), True))
+            col_g3.metric("股息率 (Dividend Yield)", fmt_num(info.get('dividendYield'), True))
+            
+            # 计算当前价格在 52 周区间的位置（极佳的左侧参考指标）
+            high_52 = info.get('fiftyTwoWeekHigh')
+            low_52 = info.get('fiftyTwoWeekLow')
+            curr_price = info.get('currentPrice') or info.get('regularMarketPrice')
+            range_str = "暂无"
+            if all(isinstance(x, (int, float)) for x in [high_52, low_52, curr_price]) and high_52 > low_52:
+                pos = (curr_price - low_52) / (high_52 - low_52) * 100
+                range_str = f"价格分位: {pos:.1f}%"
+            col_g4.metric("52周价格水位线", range_str, f"最低 {fmt_num(low_52)} / 最高 {fmt_num(high_52)}")
+            
+            st.markdown("---")
+            st.info("💡 **首席分析师锐评**：买股票就是买公司。**ROE (净资产收益率)** 代表了公司底层资产的造血效率，优秀企业常年维持在 15% 以上；而 **PB (市净率)** 和 **远期 PE** 决定了你当前支付的溢价是否合理。对于生物医药 (Biotech) 而言，请重点关注其毛利率与营收增速；对于传统红利股，请死盯股息率。")
 
 # ==========================================
 # TAB 4 & 5
