@@ -309,7 +309,50 @@ if getattr(st.session_state, 'run_analysis', False):
             col_g4.metric("52周价格水位线", range_str, f"最低 {fmt_num(low_52)} / 最高 {fmt_num(high_52)}")
             
             st.markdown("---")
-            st.info("💡 **首席分析师锐评**：买股票就是买公司。**ROE (净资产收益率)** 代表了公司底层资产的造血效率，优秀企业常年维持在 15% 以上；而 **PB (市净率)** 和 **远期 PE** 决定了你当前支付的溢价是否合理。对于生物医药 (Biotech) 而言，请重点关注其毛利率与营收增速；对于传统红利股，请死盯股息率。")
+            # ==========================================
+            # 🧠 AI 首席分析师智能诊断引擎
+            # ==========================================
+            st.markdown("### 🧠 AI 首席分析师体检报告")
+            
+            analysis_text = []
+            
+            # 1. 估值诊断 (PE)
+            pe = info.get('trailingPE')
+            if isinstance(pe, (int, float)):
+                if pe < 0:
+                    analysis_text.append("⚠️ **【估值预警】**：公司目前处于亏损状态 (市盈率为负)。请重点关注其营收增速是否在爆发，否则需警惕现金流断裂风险。")
+                elif pe < 15:
+                    analysis_text.append("🟢 **【估值极具吸引力】**：当前动态市盈率极低 (<15倍)。这通常意味着极高的安全边际，存在左侧‘捡漏’的巨大潜力；但也需警惕是否是市场预期极度悲观导致的‘价值陷阱’。")
+                elif pe > 50:
+                    analysis_text.append("🔴 **【高估值溢价】**：市盈率极高 (>50倍)！市场对其未来成长性抱有巨大期待（或者存在炒作泡沫）。一旦财报增速不及预期，极易发生惨烈的‘杀估值’，右侧操作务必严格设置止损线。")
+                else:
+                    analysis_text.append("⚪ **【估值处于合理中枢】**：市盈率处于 15-50 倍的常规区间，目前没有明显的估值泡沫或极度低估，主要赚取公司盈利增长的钱。")
+
+            # 2. 护城河诊断 (ROE & 毛利率)
+            roe = info.get('returnOnEquity')
+            gross_margin = info.get('grossMargins')
+            
+            if isinstance(roe, (int, float)) and roe > 0.15:
+                analysis_text.append("🔥 **【极强护城河】**：净资产收益率 (ROE) 超过 15%！这是最核心的盈利指标，说明公司具备极强的自我造血能力和行业壁垒，是一台优秀的赚钱机器。")
+            elif isinstance(roe, (int, float)) and roe < 0.05:
+                analysis_text.append("⚠️ **【造血能力疲软】**：ROE 偏低 (<5%)，资金利用效率不高，生意模式可能较为艰辛或正处于周期底部。")
+
+            if isinstance(gross_margin, (int, float)) and gross_margin > 0.60:
+                analysis_text.append("💊 **【印钞机属性】**：销售毛利率超过 60%！这在创新药企或顶级科技股中非常典型，说明其产品具有极强的技术垄断性和定价权。")
+            elif isinstance(gross_margin, (int, float)) and gross_margin < 0.15:
+                analysis_text.append("🧱 **【苦哈哈的辛苦钱】**：毛利率低于 15%，典型的薄利多销或制造业底端，极度依赖规模效应，抗风险能力较弱。")
+
+            # 3. 防御力诊断 (股息率)
+            div = info.get('dividendYield')
+            if isinstance(div, (int, float)) and div > 0.04:
+                analysis_text.append("🛡️ **【无敌现金牛】**：股息率高达 4% 以上，具备极强的‘类债券’防守属性。在熊市或震荡市中，光靠分红就能提供强力缓冲，是极佳的底仓防御品种。")
+
+            # 渲染报告
+            if not analysis_text:
+                st.warning("暂无足够的基本面数据生成 AI 体检报告。")
+            else:
+                for text in analysis_text:
+                    st.success(text) if "🟢" in text or "🔥" in text or "💊" in text or "🛡️" in text else st.warning(text) if "⚠️" in text else st.error(text) if "🔴" in text else st.info(text)
 
 # ==========================================
 # TAB 4 & 5
