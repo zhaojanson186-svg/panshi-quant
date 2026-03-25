@@ -11,6 +11,64 @@ from datetime import datetime
 # --- 页面配置 ---
 st.set_page_config(page_title="多维量化投资罗盘 V15 共振版", layout="wide", page_icon="🧭")
 st.title("🧭 核心资产多维量化系统 (V15 盘石计划·双核共振版)")
+# ==========================================
+# 🛰️ 顶层仪表盘：全局护卫舰长雷达 (午休盯盘专用)
+# ==========================================
+st.markdown("---")
+st.subheader("🛰️ 全局护卫舰长雷达 (午休 10 秒盯盘专用)")
+
+if st.button("🚀 启动一键全军巡检", type="primary", use_container_width=True):
+    with st.spinner("雷达全功率运转中，正在并发请求全军最新战况..."):
+        results = []
+        pool_names = [k for k in ticker_dict.keys() if k != "自定义输入..."]
+        
+        for name in pool_names:
+            tk = ticker_dict[name]
+            yf_tk = get_yf_ticker(tk)
+            try:
+                # 获取最近1年数据以确保周线MACD计算准确
+                df_scan = yf.Ticker(yf_tk).history(period="1y")
+                if df_scan.empty: continue
+                
+                close_s = df_scan['Close'].squeeze()
+                curr_price = close_s.iloc[-1]
+                
+                # 极速计算核心指标
+                sma_20 = ta.trend.sma_indicator(close_s, window=20).iloc[-1]
+                sma_60 = ta.trend.sma_indicator(close_s, window=60).iloc[-1]
+                macd = ta.trend.macd(close_s).iloc[-1]
+                macd_sig = ta.trend.macd_signal(close_s).iloc[-1]
+                w_macd = ta.trend.macd(close_s, window_slow=130, window_fast=60).iloc[-1]
+                w_macd_sig = ta.trend.macd_signal(close_s, window_slow=130, window_fast=60, window_sign=45).iloc[-1]
+                atr = ta.volatility.average_true_range(df_scan['High'], df_scan['Low'], df_scan['Close'], window=14).iloc[-1]
+                
+                w_trend_up = w_macd > w_macd_sig
+                
+                # 战术指令判定
+                sig = "⚪ 观望 / 持有"
+                if curr_price > sma_60 and curr_price > sma_20 and macd > macd_sig:
+                    sig = "🟢 触发右侧买入" if w_trend_up else "⚠️ 假突破屏蔽"
+                elif curr_price < sma_20:
+                    sig = "🔴 跌破生命线 (卖出)"
+                    
+                stop_loss = curr_price - 2 * atr
+                
+                results.append({
+                    "资产名称": name,
+                    "最新收盘价": f"{curr_price:.2f}",
+                    "20日生命线": f"{sma_20:.2f}",
+                    "今日战术指令": sig,
+                    "科学止损价(2倍ATR)": f"{stop_loss:.2f}"
+                })
+            except Exception as e:
+                pass
+                
+        if results:
+            res_df = pd.DataFrame(results)
+            # 渲染精美的数据表格
+            st.dataframe(res_df, use_container_width=True, hide_index=True)
+            st.success("✅ 巡检完成！长官，请重点关注标有 🟢 或 🔴 的资产，其余可安心略过。")
+st.markdown("---")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🏆 AI 智能多维回测", 
